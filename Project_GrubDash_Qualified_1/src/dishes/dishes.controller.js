@@ -6,21 +6,21 @@ const dishes = require(path.resolve("src/data/dishes-data"));
 // Use this function to assign ID's when necessary
 const nextId = require("../utils/nextId");
 
-// TODO: Implement the /dishes handlers needed to make the tests pass
+//-------------------------------Middleware functions--------------------------
 
-// middleware to see if dish exists
+// check to see if dish exists
 function dishExists(req, res, next) {
   const dishId = req.params.dishId;
   const foundDish = dishes.find((dish) => dish.id === dishId);
   if (foundDish) {
     res.locals.dish = foundDish;
+    res.locals.dishId = dishId;
     return next();
-  } else {
-    return next({
-      status: 404,
-      message: `Dish id not found ${req.params.dishId}`,
-    });
   }
+  return next({
+    status: 404,
+    message: `Dish id not found ${req.params.dishId}`,
+  });
 }
 
 // validate dish fields
@@ -35,22 +35,38 @@ function isValidDish(req, res, next) {
       return;
     }
   }
-
-  if (req.body.data.price < 0) {
-    return next({
-      status: 400,
-      message: "Field 'price' must be above zero",
-    });
-  }
-
   next();
 }
 
-function list(req, res, next) {
+// return error if price is not a positive number
+function isValidPrice(req, res, next) {
+  if (req.body.data.price < 0 || typeof req.body.data.price !== "number") {
+    return next({
+      status: 400,
+      message: "Field 'price' must be a number above zero",
+    });
+  }
+  next();
+}
+
+// return error if current dish id does not match updated dish id
+function isValidId(req, res, next) {
+  if (req.body.data.id && req.body.data.id !== res.locals.dishId) {
+    return next({
+      status: 400,
+      message: `id ${req.body.data.id} does not match ${res.locals.dishId}`,
+    });
+  }
+  next();
+}
+
+//------------------------------CRUD functions-----------------------------------
+
+function list(req, res) {
   res.json({ data: dishes });
 }
 
-function create(req, res, next) {
+function create(req, res) {
   const { data: { name, price, description, image_url } = {} } = req.body;
   const newDish = {
     id: nextId(), // use pre-made function to give a new id to new dish
@@ -63,43 +79,24 @@ function create(req, res, next) {
   res.status(201).json({ data: newDish });
 }
 
-function read(req, res, next) {
+function read(req, res) {
   res.json({ data: res.locals.dish });
 }
 
-function update(req, res, next) {
-  const dishId = req.params.dishId;
-  const foundDish = dishes.find((dish) => dish.id === dishId);
+function update(req, res) {
+  const { data: { name, price, description, image_url } = {} } = req.body;
 
-  const { data: { id, name, price, description, image_url } = {} } = req.body;
+  res.locals.dish.name = name;
+  res.locals.dish.price = price;
+  res.locals.dish.description = description;
+  res.locals.dish.image_url = image_url;
 
-  // return error if current dish id does not match updated dish id
-  if (id && id !== dishId) {
-    return next({
-      status: 400,
-      message: `id${id} does not match ${dishId}`,
-    });
-  }
-
-  // return error if price is not a number
-  if (typeof price !== "number") {
-    return next({
-      status: 400,
-      message: `price must be a number`,
-    });
-  }
-
-  foundDish.name = name;
-  foundDish.price = price;
-  foundDish.description = description;
-  foundDish.image_url = image_url;
-
-  res.json({ data: foundDish });
+  res.json({ data: res.locals.dish });
 }
 
 module.exports = {
   list,
-  create: [isValidDish, create],
+  create: [isValidDish, isValidPrice, isValidId, create],
   read: [dishExists, read],
-  update: [dishExists, isValidDish, update],
+  update: [dishExists, isValidDish, isValidPrice, isValidId, update],
 };
